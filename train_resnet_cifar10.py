@@ -8,22 +8,7 @@ import torch.nn.init as init
 
 import torch.optim as optim
 
-transform = transforms.Compose(
-    [transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-
-trainset = torchvision.datasets.CIFAR10(root='./cifar_data', train=True,
-                                        download=True, transform=transform)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
-                                          shuffle=True, num_workers=2)
-
-testset = torchvision.datasets.CIFAR10(root='./cifar_data', train=False,
-                                       download=True, transform=transform)
-testloader = torch.utils.data.DataLoader(testset, batch_size=4,
-                                         shuffle=False, num_workers=2)
-
-classes = ('plane', 'car', 'bird', 'cat',
-           'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+import os, time, csv
 
 class LambdaLayer(nn.Module):
     def __init__(self, lambd):
@@ -116,36 +101,101 @@ def resnet110():
 def resnet1202():
     return ResNet(BasicBlock, [200, 200, 200])
 
-net = resnet56()
 
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+def train():
+    transform = transforms.Compose(
+    [transforms.ToTensor(),
+     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
-count = 0
+    batch_size = 6
+    worker_num = 6
 
-for epoch in range(2):  # loop over the dataset multiple times
+    download_data = True
+    if os.path.exists('/home/zw119/research/res_cifar/cifar_data') and len(os.listdir('/home/zw119/research/res_cifar/cifar_data')) > 0:
+        download_data = False
 
-    running_loss = 0.0
-    for i, data in enumerate(trainloader, 0):
-        inputs, labels = data
+    trainset = torchvision.datasets.CIFAR10(root='/home/zw119/research/res_cifar/cifar_data', train=True,
+                                            download=download_data, transform=transform)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
+                                              shuffle=True, num_workers=worker_num)
 
-        optimizer.zero_grad()
+    '''
+    testset = torchvision.datasets.CIFAR10(root='./cifar_data', train=False,
+                                           download=download_data, transform=transform)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
+                                             shuffle=False, num_workers=worker_num)
+    '''
 
-        outputs = net(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
+    classes = ('plane', 'car', 'bird', 'cat',
+               'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
-        running_loss += loss.item()
-        if i % 200 == 199:    # print every 2000 mini-batches
-            print('[%d, %d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 200))
-            running_loss = 0.0
+    net = resnet110()
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    net.to(device)
 
-        count+= 1
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+
+    count = 0
+
+    loss_file = open('resnet_cifar101.csv', 'w')
+    writer = csv.writer(loss_file, delimiter = ',')
+
+    for epoch in range(10):  # loop over the dataset multiple times
+
+        running_loss = 0.0
+        for i, data in enumerate(trainloader, 0):
+            inputs, labels = data
+            inputs, labels = inputs.to(device), labels.to(device)
+
+            optimizer.zero_grad()
+
+            outputs = net(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            if i % 1000 == 999:    # print every 2000 mini-batches
+                print('[%d, %d] loss: %.3f' %
+                      (epoch + 1, i + 1, running_loss / 1000))
+                writer.writerow([count, running_loss/1000])
+                running_loss = 0.0
+            
+            count+= 1
+
+            if count % 5000 == 0:
+                torch.save(net.state_dict(), '/home/zw119/research/res_cifar/trained_weights/resnet110_cifar10_{}.pt'.format(count))
+
+
+
+            '''
+            if count == 200:
+            	break
+            '''
+        '''
         if count == 200:
         	break
-    if count == 200:
-    	break
+        '''
 
-torch.save(net.state_dict(), 'resnet_cifar10.pt')
+
+if __name__ == '__main__':
+    train()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
