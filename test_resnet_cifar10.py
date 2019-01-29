@@ -9,6 +9,7 @@ import torch.nn.init as init
 import torch.optim as optim
 
 import os, time, csv
+import numpy as np
 
 class LambdaLayer(nn.Module):
     def __init__(self, lambd):
@@ -101,8 +102,8 @@ def resnet110():
 def resnet1202():
     return ResNet(BasicBlock, [200, 200, 200])
 
+def test():
 
-def train():
     transform = transforms.Compose(
     [transforms.ToTensor(),
      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -114,73 +115,95 @@ def train():
     if os.path.exists('/home/zw119/research/res_cifar/cifar_data') and len(os.listdir('/home/zw119/research/res_cifar/cifar_data')) > 0:
         download_data = False
 
+    '''
     trainset = torchvision.datasets.CIFAR10(root='/home/zw119/research/res_cifar/cifar_data', train=True,
                                             download=download_data, transform=transform)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
                                               shuffle=True, num_workers=worker_num)
-
     '''
-    testset = torchvision.datasets.CIFAR10(root='./cifar_data', train=False,
+
+    
+    testset = torchvision.datasets.CIFAR10(root='/home/zw119/research/res_cifar/cifar_data', train=False,
                                            download=download_data, transform=transform)
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                              shuffle=False, num_workers=worker_num)
-    '''
+    
 
     classes = ('plane', 'car', 'bird', 'cat',
                'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
     net = resnet56()
+    net.load_state_dict(torch.load('/home/zw119/research/res_cifar/trained_weights/resnet56_cifar10_10000.pt'))
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     net.to(device)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+    dataiter = iter(testloader)
+    images, labels = dataiter.next()
 
-    count = 0
-
-    loss_file = open('resnet_cifar101.csv', 'w')
-    writer = csv.writer(loss_file, delimiter = ',')
-
-    for epoch in range(10):  # loop over the dataset multiple times
-
-        running_loss = 0.0
-        for i, data in enumerate(trainloader, 0):
+    """ #sample display
+    # print images
+    imshow(torchvision.utils.make_grid(images))
+    plt.show()
+    outputs = net(images)
+    print('GroundTruth: ', ' '.join('%5s' % classes[labels[j]] for j in range(4)))
+    _, predicted = torch.max(outputs, 1)
+    print('Predicted: ', ' '.join('%5s' % classes[predicted[j]]
+                                  for j in range(4)))
+    """
+    
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        count = 0
+        for data in testloader:
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
-
-            optimizer.zero_grad()
-
             outputs = net(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            count += 1
+            if count%100 == 0:
+                print(count)
 
-            running_loss += loss.item()
-            if i % 1000 == 999:    # print every 2000 mini-batches
-                print('[%d, %d] loss: %.3f' %
-                      (epoch + 1, i + 1, running_loss / 1000))
-                writer.writerow([count, running_loss/1000])
-                running_loss = 0.0
-            
-            count+= 1
+    print('Accuracy of the network on the test images: %d %%' % (
+    100 * correct / total))
+    
+    class_correct = list(0. for i in range(10))
+    class_total = list(0. for i in range(10))
+    conf_matrix = np.zeros((len(classes), len(classes)))
+    with torch.no_grad():
+        for data in testloader:
+            images, labels = data
+            images, labels = images.to(device), labels.to(device)
+            outputs = net(images)
+            _, predicted = torch.max(outputs, 1)
+            c = (predicted == labels).squeeze()
 
-            if count % 10000 == 0:
-                torch.save(net.state_dict(), '/home/zw119/research/res_cifar/trained_weights/resnet56_cifar10_{}.pt'.format(count))
+            for i in range(labels.size(0)):
+                label = labels[i]
+                pred_res = predicted[i]
+                conf_matrix[label][pred_res] += 1
+                try:
+                    class_correct[label] += c[i].item()
+                except:
+                    class_correct[label] += int(c)
+                class_total[label] += 1
 
+    for label in range(len(classes)):
+        conf_matrix[label] = conf_matrix[label]/class_total[label]*100
 
+    for i in range(len(classes)):
+        print('Accuracy of %5s : %2d %%' % (
+            classes[i], 100 * class_correct[i] / class_total[i]))
 
-            '''
-            if count == 200:
-            	break
-            '''
-        '''
-        if count == 200:
-        	break
-        '''
+    print('confusion matrix')
+    print(conf_matrix)
+
 
 
 if __name__ == '__main__':
-    train()
+    test()
 
 
 
