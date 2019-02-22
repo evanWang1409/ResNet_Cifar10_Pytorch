@@ -1,6 +1,7 @@
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torchvision import datasets
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,7 +22,7 @@ class LambdaLayer(nn.Module):
 
 def _weights_init(m):
     classname = m.__class__.__name__
-    print(classname)
+    #print(classname)
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
         init.kaiming_normal(m.weight)
 
@@ -69,7 +70,7 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
         self.linear = nn.Linear(64, num_classes)
 
-        self.apply(_weights_init)
+        #self.apply(_weights_init)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -90,50 +91,40 @@ class ResNet(nn.Module):
         out = self.linear(out)
         return out
 
-
 def resnet56():
     return ResNet(BasicBlock, [9, 9, 9])
-
 
 def resnet110():
     return ResNet(BasicBlock, [18, 18, 18])
 
-
 def resnet1202():
     return ResNet(BasicBlock, [200, 200, 200])
 
+def transform_label(target):
+    for i in range(target.size(0)):
+        num = target[i]
+        #num_trans = [2, 1, 3, 4, 5, 6, 7, 0, 8, 9]
+        num_trans = [7, 1, 0, 2, 3, 4, 5, 6, 8, 9]
+        target[i] = num_trans[num]
+    return target
+
 def test():
 
-    transform = transforms.Compose(
-    [transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-
-    batch_size = 6
-    worker_num = 6
-
-    download_data = True
-    if os.path.exists('/home/zw119/research/res_cifar/cifar_data') and len(os.listdir('/home/zw119/research/res_cifar/cifar_data')) > 0:
-        download_data = False
-
-    '''
-    trainset = torchvision.datasets.CIFAR10(root='/home/zw119/research/res_cifar/cifar_data', train=True,
-                                            download=download_data, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=worker_num)
-    '''
-
-    
-    testset = torchvision.datasets.CIFAR10(root='/home/zw119/research/res_cifar/cifar_data', train=False,
-                                           download=download_data, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=worker_num)
+    test_data_dir = '/home/zw119/research/res_cifar/cifar/p-denoised'
+    data_transforms = transforms.Compose([
+            transforms.ToTensor(),
+            ])
+    test_dataset = datasets.ImageFolder(test_data_dir,
+                                          data_transforms)
+    testloader = torch.utils.data.DataLoader(test_dataset, batch_size=4,
+                                             shuffle=True, num_workers=4)
     
 
     classes = ('plane', 'car', 'bird', 'cat',
                'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
     net = resnet56()
-    net.load_state_dict(torch.load('/home/zw119/research/res_cifar/trained_weights/resnet56_cifar10_10000.pt'))
+    net.load_state_dict(torch.load('/home/zw119/research/res_cifar/trained_weights/resnet56_cifar10_80000.pt'))
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     net.to(device)
 
@@ -160,6 +151,7 @@ def test():
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = net(inputs)
             _, predicted = torch.max(outputs.data, 1)
+            predicted = transform_label(predicted)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
             count += 1
@@ -169,6 +161,7 @@ def test():
     print('Accuracy of the network on the test images: %d %%' % (
     100 * correct / total))
     
+    '''
     class_correct = list(0. for i in range(10))
     class_total = list(0. for i in range(10))
     conf_matrix = np.zeros((len(classes), len(classes)))
@@ -199,26 +192,9 @@ def test():
 
     print('confusion matrix')
     print(conf_matrix)
+    '''
 
 
 
 if __name__ == '__main__':
     test()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
